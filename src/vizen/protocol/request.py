@@ -50,6 +50,9 @@ class Request:
 
         await injectable(self.injector)
 
+    async def json(self):
+        await self.on_body.wait()
+
 
 def parse_qs(qs: str) -> ParamsDict:
     query: ParamsDict = {}

@@ -13,6 +13,7 @@ from .protocol import (
     Output,
 )  # noqa
 from .error import (HTTPError, HTTPRedirect)  # noqa
+from .json import Json
 
 
 @Server.on_init
@@ -25,6 +26,7 @@ def init_server(injector: Injector):
     injector.provide(Request)
     injector.provide(Response)
     injector.provide(Output)
+    injector[Json] = Json()
 
 
 @Server.on_erorr(HTTPError)
