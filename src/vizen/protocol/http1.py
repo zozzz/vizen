@@ -1,7 +1,9 @@
 from httptools import HttpRequestParser
+from url import URL
 # from yapic.di import Inject
 
 from ..headers import Headers
+from ..error import handle_error, HTTPError
 from .protocol import AbstractProtocol
 from .request import Request
 from .response import Response
@@ -14,7 +16,7 @@ class HTTP1Protocol(AbstractProtocol):
     request: Request
     response: Response
     headers: Headers
-    url: bytes
+    url: URL
 
     def __init__(self):
         super().__init__()
@@ -47,7 +49,7 @@ class HTTP1Protocol(AbstractProtocol):
     # --------------------- #
 
     def on_url(self, url: bytes) -> None:
-        self.url = url
+        self.url = URL.parse(url)
 
     def on_header(self, name: bytes, value: bytes) -> None:
         self.headers[name] = value
@@ -61,7 +63,8 @@ class HTTP1Protocol(AbstractProtocol):
         request.url = self.url
         request.headers = self.headers
 
-        self.loop.create_task(request())
+        task = self.loop.create_task(request())
+        task.add_done_callback(self.__finalize_task)
         request.on_headers.set()
 
     # def on_message_begin(self):
@@ -78,3 +81,12 @@ class HTTP1Protocol(AbstractProtocol):
 
     def on_chunk_complete(self):
         print("on_chunk_header")
+
+    def __finalize_task(self, task):
+        if task.cancelled():
+            if not self.response.headers_sent:
+                self.loop.create_task(self.response.begin(503))
+        else:
+            exc = task.exception()
+            if exc is not None:
+                self.loop.create_task(handle_error(self.injector, exc))

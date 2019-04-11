@@ -1,10 +1,8 @@
-from socket import SocketType
 from typing import Union
 from http import HTTPStatus
 from yapic.di import Inject, Injector
 
 from ..headers import Headers
-from .protocol import SOCK_TRANSPORT
 from .output import Output
 
 _HTTP_STATUS = {}
@@ -51,18 +49,19 @@ class Response:
 
             for item in self.headers.items():
                 await self.output.write(b": ".join(item) + b"\r\n")
+
             await self.output.write(b"\r\n")
         else:
             raise RuntimeError("Headers already sent")
 
-    async def send(self, data: Union[str, bytes]) -> None:
+    async def send(self, data: Union[str, bytes], code: int = 200) -> None:
         if isinstance(data, str):
             data = data.encode()
 
-        await self.begin(length=len(data))
+        await self.begin(code=code, length=len(data))
         await self.output.write(data)
         self.reset()
-        self.output.sock.close()
+        # self.output.sock.close()
 
     def reset(self):
         self.headers_sent = False

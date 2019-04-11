@@ -17,16 +17,21 @@ import uuid
 from decimal import Decimal
 from typing import Union, Callable, Awaitable, Any, Dict, List, Tuple, Iterable
 
-from yapic.di import Injector, Injectable
+from yapic.di import Injector, Injectable, KwOnly, NoKwOnly
 
-from .error import VizenError
+from .error import HTTPError
+from .protocol.params import Params
 
 RouterHandler = Callable[[Any], Awaitable[Any]]
 injector = Injector()
 
 
-class RouteNotFound(VizenError):
-    pass
+class RouteNotFound(HTTPError):
+    route: str
+
+    def __init__(self, route: str):
+        super().__init__(404)
+        self.route = route
 
 
 class RouteGroup:
@@ -41,15 +46,16 @@ class RouteGroup:
     async def handler():
         pass
     """
+    __slots__ = ("_routes", "_sub_groups")
 
-    routes: Dict[Union[bytes, None], "RouteList"]
-    sub_groups: List[Tuple[str, "RouteGroup"]]
+    _routes: Dict[Union[bytes, None], "RouteList"]
+    _sub_groups: List[Tuple[str, "RouteGroup"]]
 
     def __init__(self):
-        self.routes = {}
-        self.sub_groups = []
+        self._routes = {}
+        self._sub_groups = []
 
-    def on(self, url: str, *methods: bytes):
+    def on(self, url: str, *methods: Union[str, bytes]):
         if not methods:
             methods = (b"GET", )
 
@@ -59,12 +65,12 @@ class RouteGroup:
 
         return wrapper
 
-    def add_handler(self, methods: Iterable[bytes], url: str, handler: RouterHandler):
+    def add_handler(self, methods: Iterable[Union[str, bytes]], url: str, handler: RouterHandler):
         for m in methods:
-            self.__add(m, url, handler)
+            self.__add(m if isinstance(m, bytes) else m.encode("ASCII"), url, handler)
 
     def add_group(self, prefix: str, group: "RouteGroup"):
-        self.sub_groups.append((prefix, group))
+        self._sub_groups.append((prefix, group))
 
     def get(self, url: str):
         return self.__decorator(b"GET", url)
@@ -92,11 +98,16 @@ class RouteGroup:
 
     def __add(self, method: bytes, url: str, handler: RouterHandler):
         try:
-            container = self.routes[method]
+            container = self._routes[method]
         except KeyError:
-            container = self.routes[method] = RouteList()
+            container = self._routes[method] = RouteList()
 
-        route = Route(url, injector.injectable(handler))
+        if handler.__code__ and handler.__code__.co_kwonlyargcount:  # type: ignore
+            injectable = injector.injectable(handler, provide=[KwOnly(get_handler_kwarg)])
+        else:
+            injectable = injector.injectable(handler)
+
+        route = Route(url, injectable)
         container.add(route)
 
     def __decorator(self, method: bytes, url: str):
@@ -107,10 +118,22 @@ class RouteGroup:
         return wrapper
 
 
+def get_handler_kwarg(params: Params, *, name, type):
+    try:
+        param = params[name]
+    except KeyError:
+        raise NoKwOnly()
+
+    if isinstance(param, type):
+        return param
+    else:
+        return type(param)
+
+
 class Router(RouteGroup):
     def find(self, url: str, method: bytes) -> Tuple[Injectable, dict]:
         try:
-            rl = self.routes[method]
+            rl = self._routes[method]
         except KeyError:
             raise RouteNotFound(url)
         else:

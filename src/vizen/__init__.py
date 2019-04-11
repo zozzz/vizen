@@ -12,7 +12,7 @@ from .protocol import (
     Response,
     Output,
 )  # noqa
-from .error import *  # noqa
+from .error import (HTTPError, HTTPRedirect)  # noqa
 
 
 @Server.on_init
@@ -25,3 +25,12 @@ def init_server(injector: Injector):
     injector.provide(Request)
     injector.provide(Response)
     injector.provide(Output)
+
+
+@Server.on_erorr(HTTPError)
+async def handle_http_error(response: Response = None, *, error: HTTPError):
+    if response is None:
+        return
+
+    response.headers.update(error.headers)
+    await response.send(error.content, code=error.code)

@@ -1,21 +1,19 @@
 import socket
 import asyncio
-from typing import List, Callable, Optional, Any, Tuple, Type, TypeVar, Awaitable
-from yapic.di import Injector, Inject
+from typing import List, Callable, Optional, Union
+from yapic.di import Injector, Inject, SINGLETON, KwOnly, NoKwOnly
 
 from .ssl import SSLConfig
 from .protocol import ProtocolFactory, SOCK_LISTEN
-from .event import Event
+from .router import Router
+from .error import OnErrorHandler, _SERVER_ERROR, handle_error
 
 injector = Injector()
+injector.provide(Router, Router, SINGLETON)
 
 OnInitHandler = Callable[[Injector], None]
-OnErrorHandler = Callable[[Any], Awaitable[Any]]
-
-ErrorT = TypeVar("ErrorT", bound=Exception)
 
 _SERVER_INIT: List[OnInitHandler] = []
-_SERVER_ERROR: List[Tuple[Type[ErrorT], OnErrorHandler]] = []
 
 
 class Server:
@@ -38,7 +36,7 @@ class Server:
         _SERVER_INIT.append(injector.injectable(fn))
 
     @classmethod
-    def on_erorr(cls, error: Type[ErrorT]) -> Callable[[OnErrorHandler], OnErrorHandler]:
+    def on_erorr(cls, error: type) -> Callable[[OnErrorHandler], OnErrorHandler]:
         """ Listen errors
 
         example::
@@ -51,20 +49,54 @@ class Server:
                     event.prevent_default()
                     # ...
         """
+        def get_error(exc: Exception, *, name):
+            if name == "error":
+                return exc
+            else:
+                raise NoKwOnly()
 
         def decorator(fn: OnErrorHandler) -> OnErrorHandler:
-            handler = injector.injectable(fn)
+            handler = injector.injectable(fn, provide=[KwOnly(get_error)])
             _SERVER_ERROR.insert(0, (error, handler))
             return fn
 
         return decorator
 
     @classmethod
-    def get(cls, xy):
-        def wrap(x):
-            pass
+    def on_url(cls, url: str, *methods: Union[str, bytes]):
+        return injector[Router].on(url, *methods)
 
-        return wrap
+    @classmethod
+    def on_get(cls, url: str):
+        return injector[Router].get(url)
+
+    @classmethod
+    def on_head(cls, url: str):
+        return injector[Router].head(url)
+
+    @classmethod
+    def on_post(cls, url: str):
+        return injector[Router].post(url)
+
+    @classmethod
+    def on_delete(cls, url: str):
+        return injector[Router].delete(url)
+
+    @classmethod
+    def on_connect(cls, url: str):
+        return injector[Router].connect(url)
+
+    @classmethod
+    def on_options(cls, url: str):
+        return injector[Router].options(url)
+
+    @classmethod
+    def on_trace(cls, url: str):
+        return injector[Router].trace(url)
+
+    @classmethod
+    def on_patch(cls, url: str):
+        return injector[Router].patch(url)
 
     @classmethod
     def start(cls, ip: str, port: int):
@@ -107,32 +139,6 @@ class Server:
 
         while True:
             await sleep(0.1, loop=self.loop)
-
-
-async def handle_error(injector: Injector, error: Exception) -> bool:
-    try:
-        exc_injector = injector.descend()
-
-        event = Event()
-        exc_injector[Event] = event
-
-        for hexc, hfn in _SERVER_ERROR:
-            if isinstance(error, hexc):
-                if not event.is_prevented:
-                    await hfn(exc_injector)
-                else:
-                    break
-
-        if event.is_prevented:
-            return True
-    except Exception:
-        # TODO: internal server error
-        pass
-    else:
-        # TODO: default error
-        pass
-
-    return False
 
 
 injector.provide(Server)

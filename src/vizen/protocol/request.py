@@ -1,9 +1,16 @@
 import asyncio
+# from typing import Any, Dict, Union
+from urllib.parse import parse_qsl
+
 from yapic.di import Injector, Inject
 from enum import Enum
+from url import URL
 
 from ..headers import Headers
-from .response import Response
+from ..router import Router
+from .params import Params, ParamsDict
+
+# from .response import Response
 
 
 class RequestMethod(Enum):
@@ -19,27 +26,43 @@ class RequestMethod(Enum):
 
 
 class Request:
-    __slots__ = ("injector", "headers", "version", "method", "url", "on_headers", "on_body")
+    __slots__ = ("injector", "router", "headers", "version", "method", "url", "on_headers", "on_body")
 
     injector: Inject[Injector]
+    router: Inject[Router]
+
     headers: Headers
     version: str
     method: str
-    url: bytes
+    url: URL
 
     def __init__(self):
         self.on_headers = asyncio.Event()
         self.on_body = asyncio.Event()
 
-    # def __init__(self):
-    #     self.on_headers = asyncio.Event()
-    #     self.on_body = asyncio.Event()
-    # async def __call__(self):
-    #     print("Request.__call__ 1")
-    #     await asyncio.sleep(5)
-    #     print("Request.__call__ 2")
     async def __call__(self):
-        await self.on_body.wait()
+        await self.on_headers.wait()
 
-        resp = self.injector[Response]
-        await resp.send(b"Hello World")
+        injectable, params = self.router.find(str(self.url.abspath().path), self.method)
+
+        qs = parse_qs(self.url.query)
+        self.injector[Params] = Params(params, qs, {})
+
+        await injectable(self.injector)
+
+
+def parse_qs(qs: str) -> ParamsDict:
+    query: ParamsDict = {}
+
+    if qs:
+        for name, value in parse_qsl(qs, keep_blank_values=True, strict_parsing=True):
+            try:
+                existing = query[name]
+            except KeyError:
+                query[name] = value
+            else:
+                if isinstance(existing, list):
+                    existing.append(value)
+                else:
+                    query[name] = [existing, value]
+    return query
