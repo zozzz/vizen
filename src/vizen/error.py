@@ -64,6 +64,6 @@ async def handle_error(injector: Injector, error: Exception) -> bool:
         # TODO: internal server error
         raise
     else:
-        return True
+        raise error
 
     return False

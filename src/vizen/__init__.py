@@ -14,6 +14,7 @@ from .protocol import (
 )  # noqa
 from .error import (HTTPError, HTTPRedirect)  # noqa
 from .json import Json
+from .event import Event
 
 
 @Server.on_init
@@ -30,9 +31,10 @@ def init_server(injector: Injector):
 
 
 @Server.on_erorr(HTTPError)
-async def handle_http_error(response: Response = None, *, error: HTTPError):
+async def handle_http_error(event: Event, response: Response = None, *, error: HTTPError):
     if response is None:
         return
 
     response.headers.update(error.headers)
     await response.send(error.content, code=error.code)
+    event.prevent_default()

@@ -1,7 +1,7 @@
-from httptools import HttpRequestParser
-from url import URL
+from httptools import HttpRequestParser, parse_url
 from cgi import parse_header
 from abc import ABC, abstractmethod
+from typing import Any
 # from yapic.di import Inject
 
 from ..headers import Headers
@@ -63,7 +63,7 @@ class HTTP1Protocol(AbstractProtocol):
     request: Request
     response: Response
     headers: Headers
-    url: URL
+    url: Any
 
     def __init__(self):
         super().__init__()
@@ -97,7 +97,7 @@ class HTTP1Protocol(AbstractProtocol):
     # --------------------- #
 
     def on_url(self, url: bytes) -> None:
-        self.url = URL.parse(url)
+        self.url = parse_url(url)
 
     def on_header(self, name: bytes, value: bytes) -> None:
         self.headers[name] = value

@@ -1,0 +1,24 @@
+uwsgi:
+  socket: /run/uwsgi/malta-institution.sock
+  single-interpreter: true
+  need-app: true
+  catch-exceptions: true
+
+  chdir: /web/malta/src/malta
+  wsgi-file: /web/malta/src/malta/institution.py
+
+  thunder-lock: true
+  enable-threads: true
+  max-requests: 1000
+
+  workers: 10
+  cheaper: 2
+  cheaper-initial: 2
+  cheaper-step: 2
+  cheaper-overload: 60
+
+  post-buffering: 4096
+
+  disable-logging: false
+  log-5xx: true
+  logger: file:/var/log/uwsgi/malta-institution.error

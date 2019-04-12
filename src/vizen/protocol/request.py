@@ -1,10 +1,9 @@
 import asyncio
-# from typing import Any, Dict, Union
-from urllib.parse import parse_qsl
+from enum import Enum
+from typing import Any
+from urllib.parse import parse_qsl, unquote_to_bytes
 
 from yapic.di import Injector, Inject
-from enum import Enum
-from url import URL
 
 from ..headers import Headers
 from ..router import Router
@@ -34,7 +33,7 @@ class Request:
     headers: Headers
     version: str
     method: str
-    url: URL
+    url: Any
 
     def __init__(self):
         self.on_headers = asyncio.Event()
@@ -43,7 +42,8 @@ class Request:
     async def __call__(self):
         await self.on_headers.wait()
 
-        injectable, params = self.router.find(str(self.url.abspath().path), self.method)
+        path = unquote_to_bytes(self.url.path).decode("utf-8")
+        injectable, params = self.router.find(path, self.method)
 
         qs = parse_qs(self.url.query)
         self.injector[Params] = Params(params, qs, {})
