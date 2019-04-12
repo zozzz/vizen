@@ -1,6 +1,7 @@
 yapic.di
 yapic.json
 httptools
+uvloop; sys_platform != "win32"
 
 # TODO: meg kell csinálom, hogy leforduljon windowson isez a package,
 # nem nehéz csak forceolni kell a cython rebuildet
