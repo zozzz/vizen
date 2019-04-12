@@ -119,13 +119,16 @@ class HTTP1Protocol(AbstractProtocol):
         injector[BodyParser] = self.body_parser
 
         request = self.request = injector[Request] = self.injector[Request]
+        print("create request", injector, request)
         request.method = method
         request.version = self.response.version = self.parser.get_http_version()
         request.url = self.url
         request.headers = self.headers
 
+        print("start request loop")
         task = self.loop.create_task(request())
         task.add_done_callback(self.__finalize_task)
+        print("on_headers set")
         request.on_headers.set()
 
     # def on_message_begin(self):

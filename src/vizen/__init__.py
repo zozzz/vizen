@@ -1,4 +1,4 @@
-from yapic.di import Injector
+from yapic.di import Injector, SCOPED_SINGLETON
 
 from .server import Server  # noqa
 from .loop import Loop  # noqa
@@ -15,6 +15,7 @@ from .protocol import (
 from .error import (HTTPError, HTTPRedirect)  # noqa
 from .json import Json
 from .event import Event
+from .host import Host
 
 
 @Server.on_init
@@ -27,6 +28,7 @@ def init_server(injector: Injector):
     injector.provide(Request)
     injector.provide(Response)
     injector.provide(Output)
+    injector.provide(Host, Host.determine)
     injector[Json] = Json()
 
 

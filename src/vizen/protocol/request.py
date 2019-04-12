@@ -41,11 +41,17 @@ class Request:
 
     async def __call__(self):
         await self.on_headers.wait()
+        print("WTF???", Request, self.injector, self)
+        # print("AASDSDF SDFDSFDS", self.headers)
 
         path = unquote_to_bytes(self.url.path).decode("utf-8")
         injectable, params = self.router.find(path, self.method)
 
-        qs = parse_qs(self.url.query.decode("utf-8"))
+        query = self.url.query
+        if query is not None:
+            qs = parse_qs(self.url.query.decode("utf-8"))
+        else:
+            qs = {}
         self.injector[Params] = Params(params, qs, {})
 
         await injectable(self.injector)
