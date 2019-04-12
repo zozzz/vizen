@@ -1,7 +1,7 @@
 import socket
 import asyncio
 from typing import List, Callable, Optional, Union
-from yapic.di import Injector, Inject, SINGLETON, KwOnly, NoKwOnly
+from yapic.di import Injector, Inject, Injectable, SINGLETON, KwOnly, NoKwOnly
 
 from .ssl import SSLConfig
 from .protocol import ProtocolFactory, SOCK_LISTEN
@@ -33,7 +33,7 @@ class Server:
                 injector.provide(Something)
 
         """
-        _SERVER_INIT.append(injector.injectable(fn))
+        _SERVER_INIT.append(Injectable(fn))
 
     @classmethod
     def on_erorr(cls, error: type) -> Callable[[OnErrorHandler], OnErrorHandler]:
@@ -49,6 +49,7 @@ class Server:
                     event.prevent_default()
                     # ...
         """
+
         def get_error(exc: Exception, *, name):
             if name == "error":
                 return exc
@@ -56,7 +57,7 @@ class Server:
                 raise NoKwOnly()
 
         def decorator(fn: OnErrorHandler) -> OnErrorHandler:
-            handler = injector.injectable(fn, provide=[KwOnly(get_error)])
+            handler = Injectable(fn, provide=[KwOnly(get_error)])
             _SERVER_ERROR.insert(0, (error, handler))
             return fn
 
