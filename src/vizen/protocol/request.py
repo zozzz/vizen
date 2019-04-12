@@ -45,7 +45,7 @@ class Request:
         path = unquote_to_bytes(self.url.path).decode("utf-8")
         injectable, params = self.router.find(path, self.method)
 
-        qs = parse_qs(self.url.query)
+        qs = parse_qs(self.url.query.decode("utf-8"))
         self.injector[Params] = Params(params, qs, {})
 
         await injectable(self.injector)
