@@ -152,36 +152,36 @@ class FormDataParser(BodyParser):
             sub_parts = part.split(b"\r\n\r\n")
             if len(sub_parts) < 2:
                 raise HTTPError(400)
+
+            head = sub_parts.pop(0)
+            body = b"\r\n\r\n".join(sub_parts)
+
+            headers = parse_headers(BytesIO(head))
+
+            try:
+                cd = headers["content-disposition"]
+            except KeyError:
+                raise HTTPError(400)
             else:
-                head = sub_parts.pop(0)
-                body = b"\r\n\r\n".join(sub_parts)
+                cd = parse_header(cd)
 
-                headers = parse_headers(BytesIO(head))
+                if cd[0] != "form-data":
+                    continue
 
-                try:
-                    cd = headers["content-disposition"]
-                except KeyError:
-                    raise HTTPError(400)
-                else:
-                    cd = parse_header(cd)
+                cd = cd[1]
+                if "name" in cd:
+                    if "filename" in cd:
+                        content = TemporaryFile("wb")
+                        content.write(body)
 
-                    if cd[0] != "form-data":
-                        continue
-
-                    cd = cd[1]
-                    if "name" in cd:
-                        if "filename" in cd:
-                            content = TemporaryFile("wb")
-                            content.write(body)
-
-                            if "content-type" in headers:
-                                ct = parse_header(headers["content-type"])
-                            else:
-                                ct = None
-
-                            self.fields.append(FormDataFile(headers, content, cd["name"], cd["filename"], ct))
+                        if "content-type" in headers:
+                            ct = parse_header(headers["content-type"])
                         else:
-                            self.fields.append(FormDataEntry(headers, body, cd["name"]))
+                            ct = None
+
+                        self.fields.append(FormDataFile(headers, content, cd["name"], cd["filename"], ct))
+                    else:
+                        self.fields.append(FormDataEntry(headers, body, cd["name"]))
 
 
 class RawBody(BodyParser):
