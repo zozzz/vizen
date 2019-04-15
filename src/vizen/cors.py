@@ -14,7 +14,7 @@ def CORS(request: Request, response: Response, origins: CORS_ORIGINS):
     except KeyError:
         response.headers[b"access-control-allow-origin"] = b"*"
     else:
-        if origin not in origins:
+        if origin.decode("ASCII") not in origins:
             raise HTTPError(403)
         else:
             response.headers[b"access-control-allow-origin"] = origin
