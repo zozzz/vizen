@@ -31,7 +31,7 @@ async def index(resp: Response):
 @Server.on_post("/upload")
 async def upload(req: Request, resp: Response):
     async for name, file in req.files:
-        pass
+        print(name, file)
 
     await req.on_body.wait()
 

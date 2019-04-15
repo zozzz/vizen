@@ -1,7 +1,11 @@
 from httptools import HttpRequestParser, parse_url
 from cgi import parse_header
+from http.client import parse_headers
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, List
+from enum import Enum
+from tempfile import TemporaryFile
+from io import BytesIO
 # from yapic.di import Inject
 
 from ..headers import Headers
@@ -9,50 +13,7 @@ from ..error import handle_error, HTTPError
 from .protocol import AbstractProtocol
 from .request import Request
 from .response import Response
-
-
-class BodyParser(ABC):
-    @abstractmethod
-    def feed(self, data: bytes) -> None:
-        pass
-
-
-class FormDataParser(BodyParser):
-    __slots__ = ("begin", "end", "data")
-
-    begin: bytes
-    end: bytes
-    data: bytes
-
-    def __init__(self, boundary: str):
-        self.begin = b"--" + boundary.encode("ASCII")
-        self.end = b"--" + boundary.encode("ASCII") + b"--"
-        self.data = b""
-
-    def feed(self, data: bytes) -> None:
-        print(data)
-        # self.data += data
-        # try:
-        #     idx = data.index(self.begin)
-        # except ValueError:
-
-        # else:
-        #     if self.data:
-        #         data_rem =
-        #         print(self.data)
-        #         self.data = b""
-        #     else:
-        #         self.data =
-
-
-class RawBody(BodyParser):
-    __slots__ = ("data", )
-
-    def __init__(self):
-        self.data = b""
-
-    def feed(self, data: bytes) -> None:
-        self.data += data
+from .body import BodyParser, FormDataParser, RawBody
 
 
 class HTTP1Protocol(AbstractProtocol):
@@ -111,7 +72,7 @@ class HTTP1Protocol(AbstractProtocol):
                 ct, params = parse_header(self.headers[b"content-type"].decode("ASCII"))
 
                 if ct == "multipart/form-data":
-                    self.body_parser = FormDataParser(params["boundary"])
+                    self.body_parser = FormDataParser(params["boundary"].encode("ASCII"))
 
         if self.body_parser is None:
             self.body_parser = RawBody()
@@ -136,6 +97,8 @@ class HTTP1Protocol(AbstractProtocol):
             self.body_parser.feed(body)
 
     def on_message_complete(self):
+        self.body_parser.process()
+        self.body_parser = None
         self.request.on_body.set()
 
     def on_chunk_header(self):

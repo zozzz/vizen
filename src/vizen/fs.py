@@ -26,5 +26,10 @@ class Fs:
         return Path(gettempdir())
 
     def temp_file(self, prefix: str = None, encoding: str = "utf-8") -> TempFile:
-        filename = self.temp_path / f"{(prefix + '-') if preix else ''}{str(uuid4())}"
+        if prefix is None:
+            prefix = ""
+        else:
+            prefix += "-"
+
+        filename = self.temp_path / f"{prefix}{str(uuid4())}"
         return TempFile(filename, "rw", 0o660, encoding)

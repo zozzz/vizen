@@ -2,12 +2,16 @@ import asyncio
 from enum import Enum
 from typing import Any
 from urllib.parse import parse_qsl, unquote_to_bytes
+from cgi import parse_header
 
 from yapic.di import Injector, Inject
 
 from ..headers import Headers
 from ..router import Router
+from ..error import HTTPError
+from ..json import Json
 from .params import Params, ParamsDict
+from .body import BodyParser, FormDataFile
 
 # from .response import Response
 
@@ -25,10 +29,11 @@ class RequestMethod(Enum):
 
 
 class Request:
-    __slots__ = ("injector", "router", "headers", "version", "method", "url", "on_headers", "on_body")
+    __slots__ = ("injector", "router", "headers", "version", "method", "url", "on_headers", "on_body", "body")
 
     injector: Inject[Injector]
     router: Inject[Router]
+    body: Inject[BodyParser]
 
     headers: Headers
     version: str
@@ -55,7 +60,30 @@ class Request:
         await injectable(self.injector)
 
     async def json(self):
+        try:
+            ct = self.headers[b"content-type"]
+        except KeyError:
+            raise HTTPError(400)
+        else:
+            ct = parse_header(ct.decode("ASCII"))
+
+            if ct[0] != "application/json":
+                raise HTTPError(400)
+            else:
+                charset = ct[1].get("charset", "utf-8").lower()
+
         await self.on_body.wait()
+
+        j = self.injector[Json]
+        return j.loads(self.body.data.decode(charset))
+
+    @property
+    async def files(self):
+        await self.on_body.wait()
+
+        for field in self.body.fields:
+            if isinstance(field, FormDataFile):
+                yield field.name, field
 
 
 def parse_qs(qs: str) -> ParamsDict:
