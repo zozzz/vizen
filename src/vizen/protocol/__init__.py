@@ -9,6 +9,7 @@ from .websocket import WebsocketProtocol  # noqa
 from .request import Request  # noqa
 from .response import Response  # noqa
 from .output import Output
+from .cookie import Cookie
 
 HTTP_VERSION = Token("HTTP_VERSION")
 HTTP_METHOD = Token("HTTP_METHOD")

@@ -1,19 +1,16 @@
 from httptools import HttpRequestParser, parse_url
 from cgi import parse_header
-from http.client import parse_headers
-from abc import ABC, abstractmethod
-from typing import Any, List
-from enum import Enum
-from tempfile import TemporaryFile
-from io import BytesIO
+from typing import Any
+
 # from yapic.di import Inject
 
 from ..headers import Headers
-from ..error import handle_error, HTTPError
+from ..error import handle_error
 from .protocol import AbstractProtocol
 from .request import Request
 from .response import Response
 from .body import BodyParser, FormDataParser, RawBody
+from .cookie import Cookie
 
 
 class HTTP1Protocol(AbstractProtocol):
@@ -30,7 +27,6 @@ class HTTP1Protocol(AbstractProtocol):
         super().__init__()
         self.parser = HttpRequestParser(self)
         self.headers = Headers()
-        self.response = self.injector[Response] = self.injector[Response]
         self.body_parser = None
 
     # ---------------- #
@@ -79,13 +75,18 @@ class HTTP1Protocol(AbstractProtocol):
 
         injector[BodyParser] = self.body_parser
 
+        response = self.response = injector[Response] = injector[Response]
         request = self.request = injector[Request] = injector[Request]
+
         request.method = method
-        request.version = self.response.version = self.parser.get_http_version()
+        request.version = response.version = self.parser.get_http_version()
         request.url = self.url
         request.headers = self.headers
 
+        injector[Cookie] = injector[Cookie]
+
         task = self.loop.create_task(request())
+        task.injector = injector
         task.add_done_callback(self.__finalize_task)
         request.on_headers.set()
 
@@ -109,9 +110,10 @@ class HTTP1Protocol(AbstractProtocol):
 
     def __finalize_task(self, task):
         if task.cancelled():
-            if not self.response.headers_sent:
-                self.loop.create_task(self.response.begin(503))
+            response = task.injector[Response]
+            if not response.headers_sent:
+                self.loop.create_task(response.begin(503))
         else:
             exc = task.exception()
             if exc is not None:
-                self.loop.create_task(handle_error(self.injector, exc))
+                self.loop.create_task(handle_error(task.injector, exc))

@@ -5,6 +5,7 @@ from yapic.di import Inject, Injector
 from ..headers import Headers
 from ..json import Json
 from .output import Output
+from .cookie import Cookie
 
 _HTTP_STATUS = {}
 
@@ -42,6 +43,10 @@ class Response:
 
             for item in self.headers.items():
                 await self.output.write(b": ".join(item) + b"\r\n")
+
+            cookies = self.injector[Cookie]
+            for c in cookies._new():
+                await self.output.write(b"set-cookie: " + c.OutputString().encode("ASCII") + b"\r\n")
 
             await self.output.write(b"\r\n")
         else:

@@ -1,8 +1,8 @@
 from datetime import datetime
-from http.cookies import SimpleCookie
+from http.cookies import SimpleCookie, Morsel
 from yapic.di import Inject
 
-from .protocol.request import Request
+from .request import Request
 
 
 class Cookie:
@@ -20,7 +20,7 @@ class Cookie:
         except KeyError:
             pass
         else:
-            self.__get.load(cookie.encode("ASCII"))
+            self.__get.load(cookie.decode("ASCII"))
 
     def set(self,
             key: str,
@@ -62,7 +62,13 @@ class Cookie:
         if httponly is not None:
             m["httponly"] = httponly
 
-    def __getitem__(self, key: str) -> str:
+    def get(self, key: str, default: str = None):
+        try:
+            return self[key].value
+        except KeyError:
+            return default
+
+    def __getitem__(self, key: str) -> Morsel:
         try:
             return self.__set[key]
         except KeyError:
@@ -70,3 +76,6 @@ class Cookie:
 
     def __delitem__(self, key: str) -> None:
         self.set(key, "", expires=datetime(1970, 1, 1, 0, 0, 0))
+
+    def _new(self):
+        return self.__set.values()

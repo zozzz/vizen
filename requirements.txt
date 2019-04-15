@@ -3,6 +3,7 @@ yapic.json
 httptools
 uvloop; sys_platform != "win32"
 aiofile
+portalocker
 
 # TODO: meg kell csinálom, hogy leforduljon windowson isez a package,
 # nem nehéz csak forceolni kell a cython rebuildet

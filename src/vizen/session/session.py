@@ -1,17 +1,25 @@
 from typing import Generic, TypeVar, Any
 
-from yapic.di import Inject
+from yapic.di import Inject, Token
 
-from ..protocol import Request, Response
+from ..protocol import Cookie
 from .storage import SessionStorage, SessionLock
 
 StorageT = TypeVar("StorageT", bound=SessionStorage)
 
+SESSION_ID_NAME = Token("SESSION_ID_NAME")
+_NOTSET = {}  # type: ignore
+
 
 class Session(Generic[StorageT]):
+    __slots__ = ("storage", "cookie", "session_id_name")
+
     storage: Inject[StorageT]
-    request: Inject[Request]
-    response: Inject[Response]
+    cookie: Inject[Cookie]
+    session_id_name: Inject[SESSION_ID_NAME]
+
+    def __init__(self):
+        pass
 
     @property
     def id(self) -> bytes:
@@ -20,7 +28,7 @@ class Session(Generic[StorageT]):
     def regen_id(self) -> bytes:
         pass
 
-    async def get(self, name: str) -> Any:
+    async def get(self, name: str, default: Any = _NOTSET) -> Any:
         """ Retrive value from session
 
         example::
@@ -29,7 +37,13 @@ class Session(Generic[StorageT]):
 
         """
         async with self.read() as data:
-            return data[name]
+            try:
+                return data[name]
+            except KeyError as e:
+                if default is _NOTSET:
+                    raise e
+                else:
+                    return default
 
     async def set(self, name: str, value: Any) -> None:
         """ Write value to session
@@ -83,10 +97,11 @@ class SessionContext:
     async def __aenter__(self):
         await self.storage.lock(self.id, self.lock_type)
         self.__locked = True
+        return self
 
     async def __aexit__(self, exc_type, exc, tb):
         if self.lock_type is SessionLock.WRITE:
-            await self.storage.commit()
+            await self.storage.commit(self.id)
 
         await self.storage.release(self.id, self.lock_type)
         self.__locked = False

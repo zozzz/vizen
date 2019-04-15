@@ -11,12 +11,14 @@ from .protocol import (
     Request,
     Response,
     Output,
+    Cookie,
 )  # noqa
 from .error import (HTTPError, HTTPRedirect)  # noqa
 from .json import Json
 from .event import Event
 from .host import Host
 from .cors import CORS, CORS_ORIGINS  # noqa
+from .session import Session, SessionStorage, SessionLock, FileSession, SESSION_ID_NAME
 
 
 @Server.on_init
@@ -30,9 +32,15 @@ def init_server(injector: Injector):
     injector.provide(Response)
     injector.provide(Output)
     injector.provide(Host, Host.determine, SCOPED_SINGLETON)
+    injector.provide(Cookie)
+
     injector[Json] = Json()
     injector.provide(CORS)
     injector[CORS_ORIGINS] = []
+
+    injector.provide(FileSession)
+    injector.provide(Session, Session[FileSession])
+    injector[SESSION_ID_NAME] = "SID"
 
 
 @Server.on_erorr(HTTPError)
