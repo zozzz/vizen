@@ -16,6 +16,7 @@ from .error import (HTTPError, HTTPRedirect)  # noqa
 from .json import Json
 from .event import Event
 from .host import Host
+from .cors import CORS, CORS_ORIGINS  # noqa
 
 
 @Server.on_init
@@ -28,8 +29,10 @@ def init_server(injector: Injector):
     injector.provide(Request)
     injector.provide(Response)
     injector.provide(Output)
-    injector.provide(Host, Host.determine)
+    injector.provide(Host, Host.determine, SCOPED_SINGLETON)
     injector[Json] = Json()
+    injector.provide(CORS)
+    injector[CORS_ORIGINS] = []
 
 
 @Server.on_erorr(HTTPError)

@@ -23,7 +23,6 @@ from .error import HTTPError
 from .protocol.params import Params
 
 RouterHandler = Callable[[Any], Awaitable[Any]]
-injector = Injector()
 
 
 class RouteNotFound(HTTPError):
@@ -103,9 +102,9 @@ class RouteGroup:
             container = self._routes[method] = RouteList()
 
         if handler.__code__ and handler.__code__.co_kwonlyargcount:  # type: ignore
-            injectable = injector.injectable(handler, provide=[KwOnly(get_handler_kwarg)])
+            injectable = Injectable(handler, provide=[KwOnly(get_handler_kwarg)])
         else:
-            injectable = injector.injectable(handler)
+            injectable = Injectable(handler)
 
         route = Route(url, injectable)
         container.add(route)
