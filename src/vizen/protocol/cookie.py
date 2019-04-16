@@ -62,7 +62,7 @@ class Cookie:
         if httponly is not None:
             m["httponly"] = httponly
 
-    def get(self, key: str, default: str = None):
+    def get(self, key: str, default: str = None) -> str:
         try:
             return self[key].value
         except KeyError:

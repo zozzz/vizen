@@ -3,8 +3,6 @@ from yapic.di import Inject, Token
 from .protocol import Response, Request
 from .error import HTTPError
 
-CORS_ORIGINS = Token("CORS_ORIGINS")
-
 
 class CORS:
     """ Cross-Origin Resource Sharing
@@ -24,9 +22,11 @@ class CORS:
     """
     __slots__ = ("request", "response", "origins")
 
+    ALLOWED_ORIGINS = Token("ALLOWED_ORIGINS")
+
     request: Inject[Request]
     response: Inject[Response]
-    origins: Inject[CORS_ORIGINS]
+    origins: Inject[ALLOWED_ORIGINS]
 
     def __init__(self):
         headers = self.request.headers

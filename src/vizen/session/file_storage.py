@@ -1,57 +1,80 @@
-from typing import Any, Dict
-from aiofile import AIOFile
-from yapic.di import Inject, Token
-from os import path, open, name, O_RDONLY, O_RDWR
-from portalocker import RLock, LOCK_EX, LOCK_SH, LOCK_NB
 import pickle
+from typing import Dict, Tuple, Any
+from pathlib import Path
+from yapic.di import Inject, Token
+from portalocker import RLock, LOCK_EX, LOCK_SH, LOCK_NB
 
-from .storage import SessionStorage, SessionLock
-
-SESSION_PATH = Token("SESSION_PATH")
+from .storage import SessionStorage, SessionLock, SessionNotFound
 
 
 class FileSession(SessionStorage):
-    __slots__ = ("__files", "__path", "__data")
+    __slots__ = ("__path", "__data")
 
-    __files: Dict[bytes, AIOFile]
-    __path: Inject[SESSION_PATH]
+    PATH = Token("PATH")
 
-    async def lock(self, id: bytes, mode: SessionLock) -> None:
+    __path: Inject[PATH]
+    __data: Dict[str, Tuple[RLock, Dict[str, Any]]]
+
+    def __init__(self):
+        self.__data = {}
+
+    async def lock(self, id: str, mode: SessionLock) -> None:
         try:
-            lock = self.__files[id]
+            lock, _ = self.__data[id]
         except KeyError:
-            fpath = path.join(self.__path, id)
+            fpath = str(self.__sess_path(id))
             if mode is SessionLock.READ:
-                lock = RLock(fpath, mode="r", flags=LOCK_SH | LOCK_NB)
+                lock = RLock(fpath, mode="rb", flags=LOCK_SH | LOCK_NB)
             else:
-                lock = RLock(fpath, mode="w", flags=LOCK_EX | LOCK_NB)
+                lock = RLock(fpath, mode="r+b", flags=LOCK_EX | LOCK_NB)
 
-            self.__files[id] = lock
-
-        lock.acquire(10)
-        self.__data = pickle.load(lock.fh)
-
-    async def release(self, id: bytes, mode: SessionLock) -> None:
         try:
-            lock = self.__files[id]
+            lock.acquire(10)
+        except FileNotFoundError:
+            raise SessionNotFound()
+
+        self.__data[id] = (lock, pickle.load(lock.fh))
+
+    async def release(self, id: str, mode: SessionLock) -> None:
+        try:
+            lock, _ = self.__data[id]
         except KeyError:
             raise RuntimeError("Session is not locked: %r" % id)
 
         lock.release()
+        del self.__data[id]
 
-    async def commit(self, id: bytes) -> None:
+    async def init(self, id: str, data: dict) -> None:
+        pth = self.__sess_path(id)
+        if pth.is_file():
+            raise RuntimeError("Session already exists")
+        else:
+            pth.parent.mkdir(0o770, parents=True, exist_ok=True)
+            with pth.open("wb") as f:
+                pickle.dump(data, f)
+            pth.chmod(0o770)
+
+    async def destroy(self, id: str) -> None:
+        self.__sess_path(id).unlink()
         try:
-            lock = self.__files[id]
+            del self.__data[id]
+        except KeyError:
+            pass
+
+    async def commit(self, id: str) -> None:
+        try:
+            lock, data = self.__data[id]
         except KeyError:
             raise RuntimeError("Session is not locked: %r" % id)
 
-        pickle.dump(self.__data, lock.fh)
+        lock.fh.seek(0)
+        pickle.dump(data, lock.fh)
 
-    def get(self, key: str) -> Any:
-        return self.__data[key]
+    async def touch(self, id: str) -> None:
+        Path
 
-    def set(self, key: str, value: Any):
-        self.__data[key] = value
+    def data(self, id: str) -> dict:
+        return self.__data[id][1]
 
-    def delete(self, key: str):
-        del self.__data[key]
+    def __sess_path(self, id: str) -> Path:
+        return Path(self.__path) / id

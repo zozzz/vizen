@@ -1,32 +1,53 @@
-from typing import Generic, TypeVar, Any
+import functools
+from typing import Generic, TypeVar, Any, ItemsView, Tuple
+from uuid import uuid4
 
 from yapic.di import Inject, Token
 
 from ..protocol import Cookie
-from .storage import SessionStorage, SessionLock
+from .storage import SessionStorage, SessionLock, SessionNotFound
 
 StorageT = TypeVar("StorageT", bound=SessionStorage)
 
-SESSION_ID_NAME = Token("SESSION_ID_NAME")
 _NOTSET = {}  # type: ignore
 
 
 class Session(Generic[StorageT]):
-    __slots__ = ("storage", "cookie", "session_id_name")
+    __slots__ = ("storage", "cookie", "cookie_name", "_id")
+
+    COOKIE_NAME = Token("COOKIE_NAME")
+    # COOKIE_PATH = Token("COOKIE_PATH")
+    # COOKIE_DOMAIN = Token("COOKIE_DOMAIN")
 
     storage: Inject[StorageT]
     cookie: Inject[Cookie]
-    session_id_name: Inject[SESSION_ID_NAME]
+    cookie_name: Inject[COOKIE_NAME]
 
     def __init__(self):
-        pass
+        try:
+            self._id = self.cookie.get(self.cookie_name)
+        except KeyError:
+            self._id = None
 
     @property
-    def id(self) -> bytes:
-        pass
+    def id(self) -> str:
+        return self._id
 
-    def regen_id(self) -> bytes:
-        pass
+    async def regen_id(self) -> str:
+        old_id = self._id
+        new_id = str(uuid4())
+
+        if old_id is not None:
+            async with SessionContext(self, old_id, SessionLock.WRITE) as old_ctx:
+                old_data = await old_ctx.data()
+                await self.storage.init(new_id, old_data)
+                await old_ctx.destroy()
+        else:
+            await self.storage.init(new_id, {})
+
+        self.cookie.set(self.cookie_name, new_id, httponly=True)
+        self._id = new_id
+        return new_id
 
     async def get(self, name: str, default: Any = _NOTSET) -> Any:
         """ Retrive value from session
@@ -65,7 +86,7 @@ class Session(Generic[StorageT]):
                 user_id = data["user_id"]
                 user_role = data["user_role"]
         """
-        return SessionContext(self.storage, self.id, SessionLock.READ)
+        return SessionContext(self, self._id, SessionLock.READ)
 
     def write(self) -> "SessionContext":
         """  Write bounch of values at once
@@ -77,26 +98,53 @@ class Session(Generic[StorageT]):
                     user = await User.get(data["user_id"])
                     data["user_role"] = user.role
         """
-        return SessionContext(self.storage, self.id, SessionLock.WRITE)
+        return SessionContext(self, self._id, SessionLock.WRITE)
+
+
+def _lock_req(lt: SessionLock):
+    def decor(fn):
+        @functools.wraps(fn)
+        def wrapper(self, *args, **kwargs):
+            if self._locked is False:
+                raise RuntimeError("You must lock the session before write values")
+            elif self.lock_type is not lt:
+                if lt is SessionLock.WRITE:
+                    raise RuntimeError("Session is in readonly mode, you must acquire write lock, to write values")
+            return fn(self, *args, **kwargs)
+
+        return wrapper
+
+    return decor
 
 
 class SessionContext:
-    __slots__ = ("storage", "id", "lock_type", "__locked")
+    __slots__ = ("session", "storage", "id", "lock_type", "_locked")
 
+    session: Session
     storage: SessionStorage
-    id: bytes
+    id: str
     lock_type: SessionLock
-    __locked: bool
+    _locked: bool
 
-    def __init__(self, storage: SessionStorage, id: bytes, lock_type: SessionLock):
-        self.storage = storage
+    def __init__(self, session: Session, id: str, lock_type: SessionLock):
+        self.session = session
+        self.storage = session.storage
         self.id = id
         self.lock_type = lock_type
-        self.__locked = False
+        self._locked = False
 
     async def __aenter__(self):
-        await self.storage.lock(self.id, self.lock_type)
-        self.__locked = True
+        if self.id is None:
+            self.id = await self.session.regen_id()
+
+        try:
+            await self.storage.lock(self.id, self.lock_type)
+        except SessionNotFound:
+            self.session._id = None
+            self.id = await self.session.regen_id()
+            await self.storage.lock(self.id, self.lock_type)
+
+        self._locked = True
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -104,23 +152,34 @@ class SessionContext:
             await self.storage.commit(self.id)
 
         await self.storage.release(self.id, self.lock_type)
-        self.__locked = False
+        self._locked = False
 
+    @_lock_req(SessionLock.READ)
     def __getitem__(self, key: str) -> Any:
-        if self.__locked is False:
-            raise RuntimeError("You must lock the session before read values")
-        return self.storage.get(key)
+        return self.storage.get(self.id, key)
 
+    @_lock_req(SessionLock.WRITE)
     def __setitem__(self, key: str, value: Any) -> None:
-        if self.__locked is False:
-            raise RuntimeError("You must lock the session before write values")
-        elif self.lock_type is not SessionLock.WRITE:
-            raise RuntimeError("Session is in readonly mode, you must require write lock, to write values")
-        self.storage.set(key, value)
+        self.storage.set(self.id, key, value)
 
+    @_lock_req(SessionLock.WRITE)
     def __delitem__(self, key: str) -> None:
-        if self.__locked is False:
-            raise RuntimeError("You must lock the session before write values")
-        elif self.lock_type is not SessionLock.WRITE:
-            raise RuntimeError("Session is in readonly mode, you must require write lock, to write values")
-        self.storage.delete(key)
+        self.storage.delete(self.id, key)
+
+    @_lock_req(SessionLock.READ)
+    def __iter__(self) -> ItemsView[str, Any]:
+        return self.storage.data(self.id).items()
+
+    @_lock_req(SessionLock.READ)
+    def data(self) -> dict:
+        if self._locked is False:
+            raise RuntimeError("You must lock the session before read values")
+        return self.storage.data(self.id)
+
+    @_lock_req(SessionLock.WRITE)
+    async def init(self, data: dict) -> None:
+        await self.storage.init(self.id, data)
+
+    @_lock_req(SessionLock.WRITE)
+    async def destroy(self) -> None:
+        await self.storage.destroy(self.id)
