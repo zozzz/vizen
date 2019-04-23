@@ -24,7 +24,6 @@ class Restarter(FileSystemEventHandler):
         return changed
 
     def on_any_event(self, event: FileSystemEvent):
-        print("on_any_event", event)
         self._changed = self._changed or (not event.is_directory and event.src_path.endswith(".py"))
 
     def stop(self):
