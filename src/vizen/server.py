@@ -1,6 +1,6 @@
 import socket
 import asyncio
-from typing import List, Callable, Optional, Union
+from typing import List, Callable, Optional, Union, Awaitable, Any
 from yapic.di import Injector, Inject, Injectable, SINGLETON, KwOnly, NoKwOnly
 
 from .ssl import SSLConfig
@@ -12,8 +12,10 @@ injector = Injector()
 injector.provide(Router, Router, SINGLETON)
 
 OnInitHandler = Callable[[Injector], None]
+OnStartHandler = Callable[..., Awaitable[Any]]
 
 _SERVER_INIT: List[OnInitHandler] = []
+_SERVER_START: List[OnStartHandler] = []
 
 
 class Server:
@@ -62,6 +64,21 @@ class Server:
             return fn
 
         return decorator
+
+    @classmethod
+    def on_start(cls, fn: OnStartHandler) -> OnStartHandler:
+        """ Call this function when server starts
+
+        example::
+
+            @Server.on_start
+            def handle_start() -> None:
+                pass
+        """
+
+        _SERVER_START.append(Injectable(fn))
+
+        return fn
 
     @classmethod
     def on_url(cls, url: str, *methods: Union[str, bytes]):
@@ -134,6 +151,9 @@ class Server:
             handled = await handle_error(server_injector, err)
             if not handled:
                 raise
+
+        for handler in _SERVER_START:
+            await handler(server_injector)
 
     async def run_forever(self):
         sleep = asyncio.sleep
