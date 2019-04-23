@@ -1,5 +1,7 @@
 import socket
 import asyncio
+import signal
+from enum import Enum
 from typing import List, Callable, Optional, Union, Awaitable, Any
 from yapic.di import Injector, Inject, Injectable, SINGLETON, KwOnly, NoKwOnly
 
@@ -7,6 +9,7 @@ from .ssl import SSLConfig
 from .protocol import ProtocolFactory, SOCK_LISTEN
 from .router import Router
 from .error import OnErrorHandler, _SERVER_ERROR, handle_error
+from .restarter import Restarter
 
 injector = Injector()
 injector.provide(Router, Router, SINGLETON)
@@ -18,8 +21,14 @@ _SERVER_INIT: List[OnInitHandler] = []
 _SERVER_START: List[OnStartHandler] = []
 
 
+class Shutdown(Enum):
+    NONE = 0
+    GRACEFULLY = 1
+    IMMEDIATELY = 2
+
+
 class Server:
-    __slots__ = ("injector", "loop", "ssl")
+    __slots__ = ("injector", "loop", "ssl", "_shutdown")
 
     loop: Inject["Loop"]
     ssl: Optional[SSLConfig]
@@ -121,11 +130,16 @@ class Server:
         for init in _SERVER_INIT:
             init(injector)
 
-        server = injector.get(cls)
+        server = injector[Server] = injector[Server]
         server.run(ip, port)
 
     def __init__(self, ssl: SSLConfig = None):
         self.ssl = ssl
+        self._shutdown = Shutdown.NONE
+
+        signal.signal(signal.SIGINT, self.exit_gracefully)
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+        # signal.signal(signal.SIGKILL, self.exit_immediately)
 
     def run(self, ip: str, port: int):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -157,9 +171,26 @@ class Server:
 
     async def run_forever(self):
         sleep = asyncio.sleep
+        restarter = injector[Restarter]
 
-        while True:
+        while self._shutdown is Shutdown.NONE:
             await sleep(0.1, loop=self.loop)
+
+            if restarter.restart_required():
+                self._shutdown = Shutdown.GRACEFULLY
+
+        restarter.stop()
+
+        if self._shutdown is Shutdown.GRACEFULLY:
+            pass
+
+    def exit_gracefully(self, signal: signal.Signals, frame: Any) -> None:
+        print("exit_gracefully...")
+        self._shutdown = Shutdown.GRACEFULLY
+
+    def exit_immediately(self, signal: signal.Signals, frame: Any) -> None:
+        print("exit_immediately...")
+        self._shutdown = Shutdown.IMMEDIATELY
 
 
 injector.provide(Server)

@@ -19,6 +19,7 @@ from .event import Event
 from .host import Host
 from .cors import CORS  # noqa
 from .session import Session, FileSession  # noqa
+from .restarter import Restarter
 
 
 @Server.on_init
@@ -33,6 +34,7 @@ def init_server(injector: Injector):
     injector.provide(Output)
     injector.provide(Host, Host.determine, SCOPED_SINGLETON)
     injector.provide(Cookie)
+    injector.provide(Restarter)
 
     injector[Json] = Json()
     injector.provide(CORS)
