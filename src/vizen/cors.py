@@ -59,6 +59,15 @@ class CORS:
         """
         self.response.headers[b"access-control-allow-headers"] = b", ".join(headers)
 
+    def allow_credentials(self, is_allowed: bool) -> None:
+        """ Set ``Access-Control-Allow-Credentials`` response header
+
+        example::
+
+            allow_credentials(True)
+        """
+        self.response.headers[b"access-control-allow-credentials"] = b"true" if is_allowed else b"false"
+
     def max_age(self, age: int) -> None:
         """ Set ``Access-Control-Max-Age`` response header
 

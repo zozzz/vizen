@@ -168,7 +168,7 @@ class Route:
         self.params_conv = {}
         self.handler = handler
         self.priority = 0
-        pattern = normalize(pattern)
+        self.pattern = pattern = normalize(pattern)
 
         try:
             params_begin = pattern.index("{")
@@ -207,6 +207,9 @@ class Route:
 
         return "(?P<%s>%s)" % (name, re_type)
 
+    def __repr__(self):
+        return "<Route %r>" % self.pattern
+
 
 class RouteList:
     __slots__ = ("exact", "dynamic")
@@ -244,6 +247,9 @@ class RouteList:
                 if params:
                     return (route.handler, route._handle_match(params))
         raise RouteNotFound(url)
+
+    def __repr__(self):
+        return "<RouteList exact: %r, dynamic: %r>" % (self.exact, self.dynamic)
 
 
 def normalize(pattern: str) -> str:

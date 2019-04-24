@@ -1,4 +1,4 @@
-from yapic.di import Injector, SCOPED_SINGLETON
+from yapic.di import Injector, SCOPED_SINGLETON, SINGLETON
 
 from .server import Server  # noqa
 from .loop import Loop  # noqa
@@ -20,6 +20,7 @@ from .host import Host
 from .cors import CORS  # noqa
 from .session import Session, FileSession  # noqa
 from .restarter import Restarter
+from .router import Router
 
 
 @Server.on_init
