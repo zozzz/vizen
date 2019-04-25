@@ -49,6 +49,10 @@ class Session(Generic[StorageT]):
         self._id = new_id
         return new_id
 
+    async def reset(self) -> str:
+        self._id = None
+        return await self.regen_id()
+
     async def get(self, name: str, default: Any = _NOTSET) -> Any:
         """ Retrive value from session
 
